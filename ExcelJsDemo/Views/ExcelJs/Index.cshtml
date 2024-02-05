@@ -1,0 +1,225 @@
+﻿
+@{
+    ViewBag.Title = "Index";
+}
+
+<h2>Index</h2>
+
+<div class="mb-3">
+    <label>匯入Excel檔案: </label>
+    <input type="file" id="excelInput" />
+</div>
+<div class="mb-3">
+    <button class="btn btn-primary" onclick="downloadExcel()">取得Excel範例</button>
+</div>
+
+@section Scripts{
+    @*使用 Excel.js*@
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+    @*使用SweetAlert2*@
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        //創建ExcelJS
+        const ExcelJS = window.ExcelJS;
+        const excelInput = document.querySelector("#excelInput");
+
+        //用JavaScripts 直接寫一個範例Excel
+        const downloadExcel = () => {
+            const workbook = new ExcelJS.Workbook(); // 創建試算表檔案
+            const sheet = workbook.addWorksheet('欄位範例'); //在檔案中新增工作表 參數放自訂名稱
+
+            sheet.properties.defaultColWidth = 30;
+            sheet.addTable({ // 在工作表裡面指定位置、格式並用columsn與rows屬性填寫內容
+                name: 'ProductDemo',  // 表格內看不到的，讓你之後想要針對這個table去做額外設定的時候，可以指定到這個table
+                ref: 'A1', // 從A1開始
+                columns: [
+                    { name: '產品名稱', key: 'productName' },
+                    { name: '產品分類', key: 'productCategory' },
+                    { name: '單價', key: 'UnitPrice' },
+                    { name: '介紹', key: 'Present', width: 200 },
+                    { name: '排序名次', key: 'DisplayOrder' }
+                ],
+                rows: [
+                    ['頭好痛', '分類1', '100', '簡單美味的燒烤料理', '1'],
+                    ['看不懂', '分類2', '200', '炸到酥脆的蔬菜搭配清爽的醬料', '5'],
+                    ['不會寫', '分類3', '200', '外酥內軟烤到恰到好處,讓人回味無窮', '2']
+                ],
+            });
+
+            // 表格裡面的資料都填寫完成之後，訂出下載的callback function
+            // 異步的等待他處理完之後，創建url與連結，觸發下載
+            workbook.xlsx.writeBuffer().then((content) => {
+                const link = document.createElement("a");
+                const blobData = new Blob([content], {
+                    type: "application/vnd.ms-excel;charset=utf-8;"
+                });
+                link.download = 'ExcelJs範例.xlsx';
+                link.href = URL.createObjectURL(blobData);
+                link.click();
+            });
+        }
+
+
+        /*-----------------------------------------------------------------------*/
+         //上傳檔案,只會取第一個 想寫多個的可以設定多個檔案
+        excelInput.addEventListener("change", (elem) => {
+
+            const file = elem.target.files[0];
+
+             if (file === null) {
+                 Swal.fire({
+                     icon: "error",
+                     title: "沒有上傳任何檔案!!!",
+                 });
+                 return;
+             }
+
+             //只接受Excel檔案
+             if (file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
+                 file.type === "application/vnd.ms-excel")
+             {
+                 getData(file);
+             }
+             else
+             {
+                 Swal.fire({
+                     icon: "error",
+                     title: "不接受檔案!!!"
+                 });
+                 //清除檔案
+                 excelInput.value = "";
+                 return;
+             }
+         })
+
+        //取得Excel裡面的資料
+        const getData = (file) => {
+            //使用 FileReader API 取得二進位資料 (ArrayBuffer格式)
+            let reader = new FileReader();
+            //取得資料(ArrayBuffer格式)
+            reader.readAsArrayBuffer(file);
+
+            reader.onload = (e) => {
+                const data = e.target.result;
+                //創建一個新資料表
+                const workbook = new ExcelJS.Workbook();
+
+                //透過load方法把資料放入新資料表中
+                //傳出去的資料為Array{} 裡面的資料也是Array{} 我是用下面的方法
+                //workbook.xlsx.load(data).then(() => {
+                //    const sheet = workbook.worksheets[0];
+
+                //    previewExcelData(sheet.getSheetValues());
+                //})
+
+                //在這裡轉換資料
+                //傳出去的為Array{} 裡面的資料為object
+                workbook.xlsx.load(data).then(() => {
+                    const sheet = workbook.worksheets[0];
+                    const data = sheet.getSheetValues();
+                    // 第一行為標題行
+                    const headers = data[1];
+                    // 從第二行開始，將每一行轉換為物件
+                    //最後由products存放所有product
+                    const products = [];
+                    for (let i = 2; i < data.length; i++) {
+                        const product = {};
+                        //把需要得欄位數量一一放入product
+                        for (let j = 0; j < headers.length; j++) {
+                            if (data[i][j] !== undefined) {
+                                const key = mapToKey(headers[j])
+                                product[key] = data[i][j];
+                            }
+                        }
+                        products.push(product);
+                    }
+
+                    console.log(products);
+
+                    previewExcelData(products);
+                })
+            }
+        }
+        //把Excel欄位名稱轉換成Sqlserver欄位的名稱
+        const mapToKey = (key) => {
+            switch (key) {
+                case '產品名稱':
+                    return 'productName';
+                case '產品分類':
+                    return 'productCategory';
+                case '單價':
+                    return 'UnitPrice';
+                case '介紹':
+                    return 'Present';
+                case '排序名次':
+                    return 'DisplayOrder';
+                // 可以添加其他映射
+                default:
+                    return key;
+            }
+        }
+
+        //顯示檔案的資料畫面 可不用直接呼叫Api
+        const previewExcelData = (datas) => {
+            //把data呈現在畫面上
+           
+            //跑出畫面讓使用者確認,確定就送出datas
+             Swal.fire({
+                 title: '預覽資料',
+                 html: `<table id="previewTable" class="table table-bordered table-hover"></table>`,
+                 width: 1000,
+                 showCloseButton: true,
+                 showCancelButton: true,
+                 cancelButtonText: "取消",
+                 confirmButtonText: "確定上傳!"
+             }).then((result) => {
+                  if (result.isConfirmed) {
+                     //自己呼叫Api
+                     productsExcelApi(datas);
+                  } else {
+                     //取消上傳就清空檔案
+                     excelInput.value = "";
+                 }
+             });
+            const previewTable = document.querySelector("#previewTable");
+
+            const html = datas.map(product => {
+                const { productName, productCategory, UnitPrice, Present, DisplayOrder } = product;
+                let htmltext = `<tr><td>${productName}</td><td>${productCategory}</td><td>${UnitPrice}</td><td>${Present}</td><td>${DisplayOrder}</td></tr>`;
+                return htmltext;
+            })
+            previewTable.innerHTML = html.join("");
+        }
+         //呼叫api傳入data
+        const productsExcelApi = async (data) => {
+            console.log(JSON.stringify(data));
+             const response = await fetch('@Url.Content("~/api/ExcelApi")', {
+                 method: 'POST',
+                 body: JSON.stringify(data),
+                 headers: {
+                     'Content-Type': 'application/json'
+                 }
+             })
+             const result = await response.text();
+             if (result === '"true"') {
+                 Swal.fire({
+                     icon:"success",
+                     title: '匯入成功!!\r\n 正在導向回商品頁面',
+                     showConfirmButton: false,
+                     timer: 1500
+                 });
+                 setTimeout(() => {
+                      //重新導向其他頁面
+                     location.href = '@Url.Content("~/Home")';
+                     },2000)
+             } else {
+                 Swal.fire({
+                     icon: "error",
+                     title: "Oops...",
+                     text: result,
+                 });
+             }
+         }
+    </script>
+}
